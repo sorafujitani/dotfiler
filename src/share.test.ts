@@ -16,21 +16,18 @@ const repo = (tools: string[]): RepoWithTools => ({
 });
 
 describe('repoShareTweet', () => {
-  it('puts hashtags in text and uses the GitHub URL', () => {
-    const { text, url } = repoShareTweet(repo(['git', 'neovim']));
-    expect(text).toBe('sorafujitani/dotfiles on dotfiler\n\n#dotfiles #dotfiler');
-    expect(url).toBe('https://github.com/sorafujitani/dotfiles');
+  it('separates hashtags and the GitHub URL with blank lines', () => {
+    expect(repoShareTweet(repo(['git', 'neovim']))).toBe(
+      'sorafujitani/dotfiles on dotfiler\n\n#dotfiles #dotfiler\n\nhttps://github.com/sorafujitani/dotfiles',
+    );
   });
 });
 
 describe('xIntentUrl', () => {
-  it('builds a twitter intent URL without a separate hashtags param', () => {
-    const href = xIntentUrl({
-      text: 'sorafujitani/dotfiles on dotfiler\n\n#dotfiles #dotfiler',
-      url: 'https://github.com/sorafujitani/dotfiles',
-    });
+  it('encodes the full tweet in a single text param', () => {
+    const href = xIntentUrl('sorafujitani/dotfiles on dotfiler\n\n#dotfiles #dotfiler\n\nhttps://github.com/sorafujitani/dotfiles');
     expect(href).toBe(
-      'https://twitter.com/intent/tweet?text=sorafujitani%2Fdotfiles+on+dotfiler%0A%0A%23dotfiles+%23dotfiler&url=https%3A%2F%2Fgithub.com%2Fsorafujitani%2Fdotfiles',
+      'https://twitter.com/intent/tweet?text=sorafujitani%2Fdotfiles+on+dotfiler%0A%0A%23dotfiles+%23dotfiler%0A%0Ahttps%3A%2F%2Fgithub.com%2Fsorafujitani%2Fdotfiles',
     );
   });
 });
