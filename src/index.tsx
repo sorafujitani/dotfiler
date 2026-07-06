@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
-import { getRepoWithTools, listRepos, replaceTools, toolCounts, upsertRepo } from './db';
+import { parseView } from './browse';
+import { getRepoWithTools, listRepos, pickRandomRepo, replaceTools, toolCounts, upsertRepo, type RepoWithTools } from './db';
 import { detectTools } from './detect';
 import { fetchRepo, parseRepoInput, type FetchFailureReason, type RepoRef } from './github';
-import { slugsMatchingQuery } from './registry';
+import { parseCategory, slugsInCategory, slugsMatchingQuery } from './registry';
+import { repoPageUrl, repoShareTweet, xIntentUrl } from './share';
 import { DetailPage, IndexPage, NotFoundPage } from './views';
 
 type Bindings = {
@@ -12,17 +14,42 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-async function indexProps(db: D1Database, q: string, tool: string) {
-  const [repos, counts] = await Promise.all([
-    listRepos(db, { q, tool, qToolSlugs: slugsMatchingQuery(q) }),
+function listFilter(q: string, tool: string, view: ReturnType<typeof parseView>, category: ReturnType<typeof parseCategory>) {
+  return {
+    q,
+    tool,
+    view,
+    qToolSlugs: slugsMatchingQuery(q),
+    categoryToolSlugs: category === '' ? undefined : slugsInCategory(category),
+  };
+}
+
+async function indexProps(
+  db: D1Database,
+  q: string,
+  tool: string,
+  view: ReturnType<typeof parseView>,
+  category: ReturnType<typeof parseCategory>,
+) {
+  const filter = listFilter(q, tool, view, category);
+  const [repos, counts, allRepos] = await Promise.all([
+    listRepos(db, filter),
     toolCounts(db),
+    view === 'explore' ? listRepos(db, { view: 'popular' }) : Promise.resolve(null),
   ]);
-  return { repos, counts, q, tool };
+  return { repos, counts, q, tool, view, category, allRepos };
+}
+
+function shareUrlForRepo(base: string, repo: RepoWithTools): string {
+  const pageUrl = repoPageUrl(base, repo.owner, repo.name);
+  return xIntentUrl(repoShareTweet(repo, pageUrl));
 }
 
 app.get('/', async (c) => {
   const q = c.req.query('q')?.trim() ?? '';
   const tool = c.req.query('tool')?.trim() ?? '';
+  const view = parseView(c.req.query('view'));
+  const category = parseCategory(c.req.query('category'));
   const scanned = c.req.query('scanned');
   const notice =
     scanned === undefined
@@ -30,8 +57,20 @@ app.get('/', async (c) => {
       : c.req.query('truncated') === '1'
         ? `Registered ${scanned}. The tree was truncated by GitHub, so detection ran on a partial file list.`
         : `Registered ${scanned}.`;
-  const props = await indexProps(c.env.DB, q, tool);
-  return c.html(<IndexPage {...props} notice={notice} />);
+  const props = await indexProps(c.env.DB, q, tool, view, category);
+
+  let shareUrl: string | undefined;
+  if (scanned !== undefined) {
+    const slash = scanned.indexOf('/');
+    if (slash > 0) {
+      const owner = scanned.slice(0, slash);
+      const name = scanned.slice(slash + 1);
+      const repo = await getRepoWithTools(c.env.DB, owner, name);
+      if (repo !== null) shareUrl = shareUrlForRepo(c.req.url, repo);
+    }
+  }
+
+  return c.html(<IndexPage {...props} notice={notice} shareUrl={shareUrl} />);
 });
 
 const FAILURE_MESSAGES: Record<FetchFailureReason, { status: 400 | 404 | 429 | 502; message: string }> = {
@@ -50,7 +89,7 @@ app.post('/repos', async (c) => {
 
   const fail = async (reason: FetchFailureReason, formValue: string) => {
     const { status, message } = FAILURE_MESSAGES[reason];
-    const props = await indexProps(c.env.DB, '', '');
+    const props = await indexProps(c.env.DB, '', '', 'popular', '');
     return c.html(<IndexPage {...props} error={message} formValue={formValue} />, status);
   };
 
@@ -77,12 +116,22 @@ app.post('/repos', async (c) => {
   return c.redirect(`/?${params.toString()}`, 303);
 });
 
+app.get('/surprise', async (c) => {
+  const q = c.req.query('q')?.trim() ?? '';
+  const tool = c.req.query('tool')?.trim() ?? '';
+  const category = parseCategory(c.req.query('category'));
+  const repo = await pickRandomRepo(c.env.DB, listFilter(q, tool, 'explore', category));
+  if (repo === null) return c.redirect('/', 302);
+  return c.redirect(`/repos/${repo.owner}/${repo.name}`, 302);
+});
+
 app.get('/repos/:owner/:name', async (c) => {
   const repo = await getRepoWithTools(c.env.DB, c.req.param('owner'), c.req.param('name'));
   if (repo === null) {
     return c.html(<NotFoundPage message="This repository is not registered here." />, 404);
   }
-  return c.html(<DetailPage repo={repo} />);
+  const shareUrl = shareUrlForRepo(c.req.url, repo);
+  return c.html(<DetailPage repo={repo} shareUrl={shareUrl} />);
 });
 
 app.notFound((c) => c.html(<NotFoundPage message="No such page." />, 404));

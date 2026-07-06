@@ -65,12 +65,58 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
+export type BrowseView = 'popular' | 'explore';
+
 export type ListReposFilter = {
   q?: string;
   // Registry slugs whose slug/name matched q; resolved by the caller so db stays registry-free.
   qToolSlugs?: string[];
   tool?: string;
+  categoryToolSlugs?: string[];
+  view?: BrowseView;
 };
+
+type ListWhere = { whereSql: string; binds: (string | number)[] };
+
+function buildListWhere(filter: ListReposFilter): ListWhere {
+  const where: string[] = [];
+  const binds: (string | number)[] = [];
+  const bind = (value: string | number): string => {
+    binds.push(value);
+    return `?${binds.length}`;
+  };
+
+  if (filter.tool !== undefined && filter.tool !== '') {
+    where.push(`EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug = ${bind(filter.tool)})`);
+  }
+  const categorySlugs = filter.categoryToolSlugs ?? [];
+  if (categorySlugs.length > 0) {
+    const placeholders = categorySlugs.map((slug) => bind(slug)).join(', ');
+    where.push(`EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug IN (${placeholders}))`);
+  }
+  if (filter.q !== undefined && filter.q !== '') {
+    const like = `%${escapeLike(filter.q.toLowerCase())}%`;
+    const clauses = [
+      `lower(owner) LIKE ${bind(like)} ESCAPE '\\'`,
+      `lower(name) LIKE ${bind(like)} ESCAPE '\\'`,
+    ];
+    clauses.push(
+      `EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug LIKE ${bind(like)} ESCAPE '\\')`,
+    );
+    const slugs = filter.qToolSlugs ?? [];
+    if (slugs.length > 0) {
+      const placeholders = slugs.map((slug) => bind(slug)).join(', ');
+      clauses.push(`EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug IN (${placeholders}))`);
+    }
+    where.push(`(${clauses.join(' OR ')})`);
+  }
+
+  return { whereSql: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '', binds };
+}
+
+function listOrder(view: BrowseView | undefined): string {
+  return view === 'explore' ? 'RANDOM()' : 'stars DESC, owner, name';
+}
 
 async function attachTools(db: D1Database, repos: RepoRow[]): Promise<RepoWithTools[]> {
   if (repos.length === 0) return [];
@@ -89,40 +135,23 @@ async function attachTools(db: D1Database, repos: RepoRow[]): Promise<RepoWithTo
 }
 
 export async function listRepos(db: D1Database, filter: ListReposFilter): Promise<RepoWithTools[]> {
-  const where: string[] = [];
-  const binds: (string | number)[] = [];
-  const bind = (value: string | number): string => {
-    binds.push(value);
-    return `?${binds.length}`;
-  };
-
-  if (filter.tool !== undefined && filter.tool !== '') {
-    where.push(`EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug = ${bind(filter.tool)})`);
-  }
-  if (filter.q !== undefined && filter.q !== '') {
-    const like = `%${escapeLike(filter.q.toLowerCase())}%`;
-    const clauses = [
-      `lower(owner) LIKE ${bind(like)} ESCAPE '\\'`,
-      `lower(name) LIKE ${bind(like)} ESCAPE '\\'`,
-    ];
-    // tool_slug is stored lowercase, so LIKE works without lower(); covers fallback slugs absent from the registry.
-    clauses.push(
-      `EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug LIKE ${bind(like)} ESCAPE '\\')`,
-    );
-    const slugs = filter.qToolSlugs ?? [];
-    if (slugs.length > 0) {
-      const placeholders = slugs.map((slug) => bind(slug)).join(', ');
-      clauses.push(`EXISTS (SELECT 1 FROM repo_tools t WHERE t.repo_id = repos.id AND t.tool_slug IN (${placeholders}))`);
-    }
-    where.push(`(${clauses.join(' OR ')})`);
-  }
-
-  const whereSql = where.length > 0 ? `WHERE ${where.join(' AND ')}` : '';
+  const { whereSql, binds } = buildListWhere(filter);
   const { results } = await db
-    .prepare(`SELECT * FROM repos ${whereSql} ORDER BY stars DESC, owner, name`)
+    .prepare(`SELECT * FROM repos ${whereSql} ORDER BY ${listOrder(filter.view)}`)
     .bind(...binds)
     .all<RepoRow>();
   return attachTools(db, results);
+}
+
+export async function pickRandomRepo(db: D1Database, filter: ListReposFilter): Promise<RepoWithTools | null> {
+  const { whereSql, binds } = buildListWhere(filter);
+  const repo = await db
+    .prepare(`SELECT * FROM repos ${whereSql} ORDER BY RANDOM() LIMIT 1`)
+    .bind(...binds)
+    .first<RepoRow>();
+  if (repo === null) return null;
+  const withTools = await attachTools(db, [repo]);
+  return withTools[0] ?? null;
 }
 
 export async function toolCounts(db: D1Database): Promise<Map<string, number>> {

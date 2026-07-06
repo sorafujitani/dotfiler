@@ -1,6 +1,7 @@
 import type { Child } from 'hono/jsx';
-import type { RepoWithTools } from './db';
-import { TOOL_BY_SLUG } from './registry';
+import type { BrowseView, RepoWithTools } from './db';
+import { categoryCounts, indexHref, sortedCategories, surpriseHref, type IndexQuery } from './browse';
+import { CATEGORY_LABEL, TOOL_BY_SLUG, type ToolCategory } from './registry';
 
 const CSS = `
 :root {
@@ -46,9 +47,9 @@ a:focus-visible, input:focus-visible, button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.page { max-width: 42rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+.page { max-width: 42rem; margin: 0 auto; padding: 3rem 1.5rem 5rem; }
 
-.hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap; }
 .wordmark {
   font-family: var(--mono);
   font-size: clamp(1.75rem, 5vw, 2.35rem);
@@ -59,18 +60,18 @@ a:focus-visible, input:focus-visible, button:focus-visible {
 }
 .wordmark a { text-decoration: none; }
 .dot { color: var(--accent); }
-.tagline { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.975rem; max-width: 28rem; }
+.tagline { margin: 0.65rem 0 0; color: var(--muted); font-size: 0.975rem; max-width: 28rem; line-height: 1.65; }
 .stats {
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--muted);
   white-space: nowrap;
-  padding-top: 0.35rem;
+  padding-top: 0.5rem;
 }
 
 .panel {
-  margin-top: 1.75rem;
-  padding: 1rem 1.1rem;
+  margin-top: 2.5rem;
+  padding: 1.35rem 1.4rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
@@ -81,16 +82,16 @@ a:focus-visible, input:focus-visible, button:focus-visible {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
-  margin: 0 0 0.65rem;
+  margin: 0 0 1rem;
 }
 
-.register { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.register { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 .register input {
   flex: 1;
   min-width: 12rem;
   font-family: var(--mono);
   font-size: 0.875rem;
-  padding: 0.55rem 0.7rem;
+  padding: 0.65rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--surface-inset);
@@ -119,17 +120,17 @@ button:hover, .btn:hover { filter: brightness(1.06); }
 }
 .btn-ghost:hover { color: var(--ink); border-color: var(--line-strong); background: var(--surface-inset); }
 
-.flash { margin: 1rem 0 0; padding: 0.6rem 0.8rem; border-radius: 4px; font-family: var(--mono); font-size: 0.8rem; }
+.flash { margin: 1.25rem 0 0; padding: 0.75rem 1rem; border-radius: 4px; font-family: var(--mono); font-size: 0.8rem; }
 .flash-error { border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); color: var(--accent); background: var(--accent-soft); }
 .flash-notice { border: 1px solid var(--line); color: var(--muted); background: var(--surface-inset); }
 
-.browse { margin-top: 2rem; }
+.browse { margin-top: 3rem; }
 .browse-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 0.85rem;
+  margin-bottom: 1.25rem;
 }
 .section-label {
   font-family: var(--mono);
@@ -140,17 +141,48 @@ button:hover, .btn:hover { filter: brightness(1.06); }
   color: var(--muted);
   margin: 0;
 }
-.section-label-spaced { margin: 1.75rem 0 0.65rem; }
-.detail-title-spaced { margin-top: 1.25rem; }
-.back-link { margin-top: 1.5rem; }
+.section-label-spaced { margin: 2.25rem 0 1rem; }
+.detail-title-spaced { margin-top: 1.75rem; }
+.back-link { margin-top: 2rem; }
 .browse-meta { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
 
-.search { margin: 0 0 0.85rem; }
+.view-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.view-tab {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--muted);
+  background: var(--surface-inset);
+}
+.view-tab[aria-current="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.explore-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.explore-bar .tags { flex: 1; min-width: 12rem; margin-bottom: 0; }
+.surprise-btn { flex-shrink: 0; white-space: nowrap; }
+
+.search { margin: 0 0 1.25rem; }
 .search input {
   width: 100%;
   font-family: var(--mono);
   font-size: 0.875rem;
-  padding: 0.5rem 0.7rem;
+  padding: 0.65rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--surface);
@@ -169,12 +201,13 @@ button:hover, .btn:hover { filter: brightness(1.06); }
   border: 0;
 }
 
-.tags { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
+.tags { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.browse .tags { margin-bottom: 1.5rem; }
 .tag {
   font-family: var(--mono);
   font-size: 0.75rem;
   text-decoration: none;
-  padding: 0.12rem 0.45rem 0.15rem 0.35rem;
+  padding: 0.2rem 0.5rem 0.25rem 0.4rem;
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--ink);
@@ -184,42 +217,51 @@ button:hover, .btn:hover { filter: brightness(1.06); }
 .tag[aria-current="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .tag .dot { font-weight: 700; color: var(--accent); }
 .tag-count { color: var(--muted); margin-left: 0.5ch; font-size: 0.7rem; }
-.clear-filter { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); margin-left: 0.25rem; }
+.clear-filter { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); margin-left: 0.5rem; }
 .clear-filter:hover { color: var(--accent); }
 
 .repo-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); overflow: hidden; }
-.repo { padding: 0.85rem 1rem; border-bottom: 1px solid var(--line); }
+.repo { padding: 1.15rem 1.25rem; border-bottom: 1px solid var(--line); }
 .repo:last-child { border-bottom: 0; }
 .repo:hover { background: var(--surface-inset); }
-.repo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+.repo-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
 .repo-name { font-family: var(--mono); font-size: 0.925rem; font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
 .repo-name:hover { color: var(--accent); }
 .repo-meta { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.repo-meta-soft { opacity: 0.8; }
 .repo-desc {
-  margin: 0.3rem 0 0;
+  margin: 0.5rem 0 0;
   color: var(--muted);
   font-size: 0.9rem;
+  line-height: 1.6;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.repo .tags { margin-top: 0.55rem; }
-.empty { color: var(--muted); font-style: italic; font-size: 0.925rem; margin: 0.75rem 0 0; }
+.repo .tags { margin-top: 0.85rem; }
+.empty { color: var(--muted); font-style: italic; font-size: 0.925rem; margin: 1.25rem 0 0; }
 
 .crumb { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
 .crumb a { text-decoration: none; }
 .crumb a:hover { color: var(--accent); }
-.detail-header { margin-top: 1.25rem; }
+.detail-header { margin-top: 1.75rem; }
 .detail-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
 }
+.detail-title-wrap { flex: 1; min-width: 12rem; }
+.detail-links {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
 .detail-title { font-family: var(--mono); font-size: clamp(1.25rem, 4vw, 1.75rem); letter-spacing: -0.02em; margin: 0; overflow-wrap: anywhere; }
-.detail-desc { margin: 0.45rem 0 0; color: var(--muted); font-size: 0.975rem; }
+.detail-desc { margin: 0.65rem 0 0; color: var(--muted); font-size: 0.975rem; line-height: 1.6; }
 .github-link {
   font-family: var(--mono);
   font-size: 0.8rem;
@@ -230,14 +272,33 @@ button:hover, .btn:hover { filter: brightness(1.06); }
   color: var(--accent);
   text-decoration: none;
   white-space: nowrap;
-  flex-shrink: 0;
 }
 .github-link:hover { background: var(--accent); color: var(--on-accent); }
+.share-link {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.share-link:hover { border-color: var(--line-strong); color: var(--ink); background: var(--surface-inset); }
+.flash-notice .share-link {
+  font-size: inherit;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+}
+.flash-notice .share-link:hover { background: transparent; text-decoration: underline; }
 .detail-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem 1.25rem;
-  margin-top: 0.85rem;
+  gap: 0.65rem 1.5rem;
+  margin-top: 1.15rem;
   font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--muted);
@@ -246,9 +307,9 @@ button:hover, .btn:hover { filter: brightness(1.06); }
 .meta-grid {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.35rem 1.25rem;
-  margin: 1.5rem 0 0;
-  padding: 0.85rem 1rem;
+  gap: 0.6rem 1.5rem;
+  margin: 2rem 0 0;
+  padding: 1.1rem 1.25rem;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--surface);
@@ -262,20 +323,20 @@ button:hover, .btn:hover { filter: brightness(1.06); }
 .tool-rows li {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 0.75rem 1rem;
+  gap: 0.75rem 1.25rem;
   align-items: baseline;
-  padding: 0.55rem 0.85rem;
+  padding: 0.75rem 1.1rem;
   border-bottom: 1px solid var(--line);
   font-size: 0.875rem;
 }
 .tool-rows li:last-child { border-bottom: 0; }
 .tool-rows li:hover { background: var(--surface-inset); }
 .matched-path { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; text-align: right; }
-.detail-actions { margin-top: 1.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.detail-actions { margin-top: 2.25rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
-footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+footer { margin-top: 4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) {
-  .tag, button, .btn, .github-link, .repo, .tool-rows li { transition: border-color 120ms ease, color 120ms ease, filter 120ms ease, background 120ms ease; }
+  .tag, button, .btn, .github-link, .share-link, .repo, .tool-rows li, .view-tab { transition: border-color 120ms ease, color 120ms ease, filter 120ms ease, background 120ms ease; }
 }
 `;
 
@@ -328,16 +389,23 @@ const formatStars = (stars: number): string => (stars >= 1000 ? `${(stars / 1000
 
 const plural = (count: number, one: string, many: string): string => `${count} ${count === 1 ? one : many}`;
 
-const Tag = (props: { slug: string; count?: number; active?: boolean; title?: string }) => (
+const Tag = (props: { slug: string; count?: number; active?: boolean; title?: string; href: string }) => (
   <a
     class="tag"
-    href={`/?tool=${encodeURIComponent(props.slug)}`}
+    href={props.href}
     aria-current={props.active === true ? 'true' : undefined}
     title={props.title ?? toolName(props.slug)}
   >
     <span class="dot">.</span>
     {props.slug}
     {props.count !== undefined && <span class="tag-count">{props.count}</span>}
+  </a>
+);
+
+const CategoryChip = (props: { category: ToolCategory; count: number; active?: boolean; href: string }) => (
+  <a class="tag" href={props.href} aria-current={props.active === true ? 'true' : undefined}>
+    {CATEGORY_LABEL[props.category]}
+    <span class="tag-count">{props.count}</span>
   </a>
 );
 
@@ -350,23 +418,37 @@ const haystack = (repo: RepoWithTools): string =>
     .join(' ')
     .toLowerCase();
 
-const RepoItem = (props: { repo: RepoWithTools; activeTool: string }) => {
+const RepoItem = (props: { repo: RepoWithTools; activeTool: string; emphasizeStars: boolean; query: IndexQuery }) => {
   const repo = props.repo;
+  const detailHref = `/repos/${repo.owner}/${repo.name}`;
   return (
     <li class="repo" data-haystack={haystack(repo)}>
       <div class="repo-head">
-        <a class="repo-name" href={`/repos/${repo.owner}/${repo.name}`}>
+        <a class="repo-name" href={detailHref}>
           {repo.owner}/{repo.name}
         </a>
-        <span class="repo-meta" title={`${repo.stars} stars`}>
-          {formatStars(repo.stars)} ★ · {plural(repo.tools.length, 'tool', 'tools')}
-        </span>
+        {props.emphasizeStars ? (
+          <span class="repo-meta" title={`${repo.stars} stars`}>
+            {formatStars(repo.stars)} ★ · {plural(repo.tools.length, 'tool', 'tools')}
+          </span>
+        ) : (
+          <span class="repo-meta repo-meta-soft">{plural(repo.tools.length, 'tool', 'tools')}</span>
+        )}
       </div>
       {repo.description !== null && repo.description !== '' && <p class="repo-desc">{repo.description}</p>}
       {repo.tools.length > 0 && (
         <div class="tags">
           {repo.tools.map((tool) => (
-            <Tag slug={tool.tool_slug} active={tool.tool_slug === props.activeTool} title={tool.matched_path} />
+            <Tag
+              slug={tool.tool_slug}
+              active={tool.tool_slug === props.activeTool}
+              title={tool.matched_path}
+              href={
+                props.query.view === 'popular'
+                  ? indexHref(props.query, { view: 'popular', category: '', tool: tool.tool_slug })
+                  : detailHref
+              }
+            />
           ))}
         </div>
       )}
@@ -377,17 +459,35 @@ const RepoItem = (props: { repo: RepoWithTools; activeTool: string }) => {
 export type IndexProps = {
   repos: RepoWithTools[];
   counts: Map<string, number>;
+  allRepos: RepoWithTools[] | null;
   q: string;
   tool: string;
+  view: BrowseView;
+  category: ToolCategory | '';
   formValue?: string;
   error?: string;
   notice?: string;
+  shareUrl?: string;
 };
 
 export const IndexPage = (props: IndexProps) => {
   const facets = [...props.counts.entries()].toSorted((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  const filtered = props.q !== '' || props.tool !== '';
+  const categoryFacets =
+    props.allRepos === null ? [] : sortedCategories(categoryCounts(props.allRepos));
+  const query: IndexQuery = { view: props.view, q: props.q, tool: props.tool, category: props.category };
+  const filtered = props.q !== '' || props.tool !== '' || props.category !== '';
   const toolTotal = facets.reduce((sum, [, count]) => sum + count, 0);
+  const browseMetaSuffix = (() => {
+    const parts: string[] = [];
+    if (props.view === 'popular') {
+      parts.push('sorted by stars');
+      if (props.tool !== '') parts.push(`filtered by .${props.tool}`);
+    } else {
+      parts.push('shuffled');
+      if (props.category !== '') parts.push(CATEGORY_LABEL[props.category]);
+    }
+    return parts.length > 0 ? ` · ${parts.join(' · ')}` : '';
+  })();
   return (
     <Layout title="dotfiler — a registry of dotfiles repositories">
       <header>
@@ -428,17 +528,45 @@ export const IndexPage = (props: IndexProps) => {
             {props.error}
           </p>
         )}
-        {props.notice !== undefined && <p class="flash flash-notice">{props.notice}</p>}
+        {props.notice !== undefined && (
+          <p class="flash flash-notice">
+            {props.notice}
+            {props.shareUrl !== undefined && (
+              <>
+                {' '}
+                <a class="share-link" href={props.shareUrl} rel="noopener noreferrer" target="_blank">
+                  Share on X ↗
+                </a>
+              </>
+            )}
+          </p>
+        )}
       </header>
 
       <section class="browse" aria-label="Browse repositories">
         <div class="browse-head">
           <h2 class="section-label">Browse</h2>
           <span class="browse-meta">
-            <span data-visible-count>{props.repos.length}</span> shown
-            {props.tool !== '' && ` · filtered by .${props.tool}`}
+            <span data-visible-count>{props.repos.length}</span> shown{browseMetaSuffix}
           </span>
         </div>
+
+        <nav class="view-tabs" aria-label="Browse mode">
+          <a
+            class="view-tab"
+            href={indexHref(query, { view: 'popular', category: '' })}
+            aria-current={props.view === 'popular' ? 'true' : undefined}
+          >
+            Popular
+          </a>
+          <a
+            class="view-tab"
+            href={indexHref(query, { view: 'explore', tool: '' })}
+            aria-current={props.view === 'explore' ? 'true' : undefined}
+          >
+            Explore
+          </a>
+        </nav>
 
         <form class="search" method="get" action="/">
           <input
@@ -449,28 +577,73 @@ export const IndexPage = (props: IndexProps) => {
             aria-label="Filter repositories"
             data-filter-input
           />
-          {props.tool !== '' && <input type="hidden" name="tool" value={props.tool} />}
+          {props.view === 'explore' && <input type="hidden" name="view" value="explore" />}
+          {props.category !== '' && <input type="hidden" name="category" value={props.category} />}
+          {props.tool !== '' && props.view === 'popular' && <input type="hidden" name="tool" value={props.tool} />}
           <button type="submit" class="sr-only">
             Search
           </button>
         </form>
 
-        {facets.length > 0 && (
+        {props.view === 'popular' && facets.length > 0 && (
           <div class="tags">
             {facets.map(([slug, count]) => (
-              <Tag slug={slug} count={count} active={slug === props.tool} />
+              <Tag
+                slug={slug}
+                count={count}
+                active={slug === props.tool}
+                href={indexHref(query, {
+                  view: 'popular',
+                  category: '',
+                  tool: slug === props.tool ? '' : slug,
+                })}
+              />
             ))}
             {props.tool !== '' && (
-              <a class="clear-filter" href="/">
+              <a class="clear-filter" href={indexHref({ view: 'popular', q: '', tool: '', category: '' })}>
                 clear
               </a>
             )}
           </div>
         )}
 
+        {props.view === 'explore' && (
+          <div class="explore-bar">
+            {categoryFacets.length > 0 && (
+              <div class="tags">
+                {categoryFacets.map(([category, count]) => (
+                  <CategoryChip
+                    category={category}
+                    count={count}
+                    active={category === props.category}
+                    href={indexHref(query, {
+                      view: 'explore',
+                      tool: '',
+                      category: category === props.category ? '' : category,
+                    })}
+                  />
+                ))}
+                {props.category !== '' && (
+                  <a class="clear-filter" href={indexHref(query, { category: '' })}>
+                    clear
+                  </a>
+                )}
+              </div>
+            )}
+            <a class="btn btn-ghost surprise-btn" href={surpriseHref(query)}>
+              Surprise me
+            </a>
+          </div>
+        )}
+
         <ul class="repo-list">
           {props.repos.map((repo) => (
-            <RepoItem repo={repo} activeTool={props.tool} />
+            <RepoItem
+              repo={repo}
+              activeTool={props.tool}
+              emphasizeStars={props.view === 'popular'}
+              query={query}
+            />
           ))}
         </ul>
         <p class="empty" data-empty hidden={props.repos.length > 0}>
@@ -488,7 +661,7 @@ const formatDate = (iso: string): string => {
   return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
 };
 
-export const DetailPage = (props: { repo: RepoWithTools }) => {
+export const DetailPage = (props: { repo: RepoWithTools; shareUrl: string }) => {
   const repo = props.repo;
   const full = `${repo.owner}/${repo.name}`;
   return (
@@ -501,10 +674,17 @@ export const DetailPage = (props: { repo: RepoWithTools }) => {
       </nav>
       <header class="detail-header">
         <div class="detail-head">
-          <h1 class="detail-title">{full}</h1>
-          <a class="github-link" href={repo.html_url} rel="noopener noreferrer" target="_blank">
-            View on GitHub ↗
-          </a>
+          <div class="detail-title-wrap">
+            <h1 class="detail-title">{full}</h1>
+          </div>
+          <div class="detail-links">
+            <a class="github-link" href={repo.html_url} rel="noopener noreferrer" target="_blank">
+              View on GitHub ↗
+            </a>
+            <a class="share-link" href={props.shareUrl} rel="noopener noreferrer" target="_blank">
+              Share on X ↗
+            </a>
+          </div>
         </div>
         {repo.description !== null && repo.description !== '' && <p class="detail-desc">{repo.description}</p>}
         <div class="detail-stats">
@@ -524,7 +704,11 @@ export const DetailPage = (props: { repo: RepoWithTools }) => {
           <ul class="tool-rows">
             {repo.tools.map((tool) => (
               <li>
-                <Tag slug={tool.tool_slug} title={toolName(tool.tool_slug)} />
+                <Tag
+                  slug={tool.tool_slug}
+                  title={toolName(tool.tool_slug)}
+                  href={indexHref({ view: 'popular', q: '', tool: tool.tool_slug, category: '' })}
+                />
                 <span class="matched-path">{tool.matched_path}</span>
               </li>
             ))}

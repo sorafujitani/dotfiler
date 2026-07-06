@@ -138,3 +138,44 @@ export function slugsMatchingQuery(query: string): string[] {
     (tool) => tool.slug.includes(needle) || tool.name.toLowerCase().includes(needle),
   ).map((tool) => tool.slug);
 }
+
+export const CATEGORY_ORDER: ToolCategory[] = [
+  'editor',
+  'shell',
+  'terminal',
+  'multiplexer',
+  'prompt',
+  'package',
+  'runtime',
+  'cli',
+  'vcs',
+  'wm',
+  'launcher',
+  'other',
+];
+
+export const CATEGORY_LABEL: Record<ToolCategory, string> = {
+  editor: 'Editors',
+  shell: 'Shells',
+  terminal: 'Terminals',
+  multiplexer: 'Multiplexers',
+  vcs: 'VCS',
+  wm: 'Window managers',
+  launcher: 'Launchers',
+  prompt: 'Prompts',
+  package: 'Packages',
+  runtime: 'Runtimes',
+  cli: 'CLI tools',
+  other: 'Other',
+};
+
+const CATEGORY_SET = new Set<string>(CATEGORY_ORDER);
+
+export function parseCategory(raw: string | undefined): ToolCategory | '' {
+  const value = raw?.trim() ?? '';
+  return CATEGORY_SET.has(value) ? (value as ToolCategory) : '';
+}
+
+export function slugsInCategory(category: ToolCategory): string[] {
+  return TOOL_REGISTRY.filter((tool) => tool.category === category).map((tool) => tool.slug);
+}
