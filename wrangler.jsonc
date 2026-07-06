@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "dotfiler",
+  "main": "src/index.tsx",
+  "compatibility_date": "2026-07-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dotfiler",
+      "database_id": "6ba016c1-0493-434e-9dcd-8095add63c71",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
