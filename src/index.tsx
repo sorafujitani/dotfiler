@@ -4,7 +4,7 @@ import { getRepoWithTools, listRepos, pickRandomRepo, replaceTools, toolCounts, 
 import { detectTools } from './detect';
 import { fetchRepo, parseRepoInput, type FetchFailureReason, type RepoRef } from './github';
 import { parseCategory, slugsInCategory, slugsMatchingQuery } from './registry';
-import { repoPageUrl, repoShareTweet, xIntentUrl } from './share';
+import { repoShareTweet, xIntentUrl } from './share';
 import { DetailPage, IndexPage, NotFoundPage } from './views';
 
 type Bindings = {
@@ -40,9 +40,8 @@ async function indexProps(
   return { repos, counts, q, tool, view, category, allRepos };
 }
 
-function shareUrlForRepo(base: string, repo: RepoWithTools): string {
-  const pageUrl = repoPageUrl(base, repo.owner, repo.name);
-  return xIntentUrl(repoShareTweet(repo, pageUrl));
+function shareUrlForRepo(repo: RepoWithTools): string {
+  return xIntentUrl(repoShareTweet(repo));
 }
 
 app.get('/', async (c) => {
@@ -66,7 +65,7 @@ app.get('/', async (c) => {
       const owner = scanned.slice(0, slash);
       const name = scanned.slice(slash + 1);
       const repo = await getRepoWithTools(c.env.DB, owner, name);
-      if (repo !== null) shareUrl = shareUrlForRepo(c.req.url, repo);
+      if (repo !== null) shareUrl = shareUrlForRepo(repo);
     }
   }
 
@@ -130,7 +129,7 @@ app.get('/repos/:owner/:name', async (c) => {
   if (repo === null) {
     return c.html(<NotFoundPage message="This repository is not registered here." />, 404);
   }
-  const shareUrl = shareUrlForRepo(c.req.url, repo);
+  const shareUrl = shareUrlForRepo(repo);
   return c.html(<DetailPage repo={repo} shareUrl={shareUrl} />);
 });
 
